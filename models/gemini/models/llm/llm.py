@@ -50,7 +50,7 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
         stop: Optional[Sequence[str]] = None,
         stream: bool = True,
         user: Optional[str] = None,
-    ) -> Union[LLMResult, Generator]:
+    ) -> Union[LLMResult, Generator[LLMResultChunk]]:
         _ = user
         return self._generate(
             model=model,
@@ -142,7 +142,7 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
         tools: Optional[Sequence[PromptMessageTool]] = None,
         stop: Optional[Sequence[str]] = None,
         stream: bool = True,
-    ) -> Union[LLMResult, Generator]:
+    ) -> Union[LLMResult, Generator[LLMResultChunk]]:
         # Copy model parameters to avoid modifying the original dict
         model_configuration = dict(model_parameters)
 
@@ -306,7 +306,7 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
         credentials: Mapping[str, Any],
         response: Iterator[types.GenerateContentResponse],
         prompt_messages: Sequence[PromptMessage],
-    ) -> Generator:
+    ) -> Generator[LLMResultChunk]:
         index = -1
         prompt_tokens = 0
         completion_tokens = 0
@@ -490,11 +490,20 @@ class GoogleLargeLanguageModel(LargeLanguageModel):
                     raise InvokeError("receive inline_data with no mime_type")
                 if data is None:
                     raise InvokeError("receive inline_data with no data")
-                if "image" in mime_type:
+                if mime_type.startswith("image/"):
+                    # TODO(QuantumGhost): maintain a proper mapping of 
+                    # image types and file formats, instead of parsing and 
+                    # extracting file formats from `mime_type` directly.
+                    image_type = mime_type.split("/", 1)[-1]
                     contents.append(
                         ImagePromptMessageContent(
-                            format=mime_type.split("/")[-1],
-                            base64_data=base64.b64encode(data).decode(),
+                            format=image_type,
+                            # Here the google-genai sdk returns base64 encoded PNG image as
+                            # `bytes`,
+                            # so we do not need to encode it again.
+                            # 
+                            # Decode it to str to ensure it is a base64 encoded string.
+                            base64_data=data.decode(),
                             mime_type=mime_type,
                         )
                     )
